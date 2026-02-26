@@ -1,0 +1,23 @@
+[package]
+name = "qcicada"
+version = "0.1.0"
+edition = "2021"
+description = "SDK for the QCicada QRNG (Crypta Labs) — macOS-first, works on Linux too"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/erai/qcicada"
+keywords = ["qrng", "quantum", "random", "crypta-labs", "qcicada"]
+categories = ["hardware-support", "cryptography"]
+exclude = ["python/", "crypta_labs/", "*.py", "*.pdf", ".venv/"]
+
+[dependencies]
+serialport = "4"
+thiserror = "2"
+log = "0.4"
+
+[dev-dependencies]
+hex = "0.4"
+
+[[example]]
+name = "basic"
+path = "examples/basic.rs"
