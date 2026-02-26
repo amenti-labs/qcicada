@@ -1,6 +1,6 @@
 [project]
 name = "qcicada"
-version = "0.1.0"
+version = "0.1.1"
 description = "Python SDK for the QCicada QRNG (Crypta Labs) — macOS-first, works on Linux too"
 requires-python = ">=3.10"
 license = "MIT"
@@ -13,6 +13,10 @@ classifiers = [
     "Topic :: Security :: Cryptography",
 ]
 dependencies = ["pyserial>=3.5"]
+
+[project.urls]
+Homepage = "https://github.com/amenti-labs/qcicada"
+Repository = "https://github.com/amenti-labs/qcicada"
 
 [project.optional-dependencies]
 dev = ["pytest>=7"]

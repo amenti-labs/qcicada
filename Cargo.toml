@@ -1,11 +1,11 @@
 [package]
 name = "qcicada"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "SDK for the QCicada QRNG (Crypta Labs) — macOS-first, works on Linux too"
 license = "MIT"
 readme = "README.md"
-repository = "https://github.com/erai/qcicada"
+repository = "https://github.com/amenti-labs/qcicada"
 keywords = ["qrng", "quantum", "random", "crypta-labs", "qcicada"]
 categories = ["hardware-support", "cryptography"]
 exclude = ["python/", "crypta_labs/", "*.py", "*.pdf", ".venv/"]
