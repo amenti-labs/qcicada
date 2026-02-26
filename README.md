@@ -2,15 +2,26 @@
 
 Rust and Python SDK for the [QCicada quantum random number generator](https://cryptalabs.com/) by Crypta Labs.
 
-The official `pyqcc` SDK doesn't work on macOS due to FTDI serial driver differences. This SDK fixes that — and provides a cleaner API with no monkey-patching.
+macOS-first — fixes FTDI serial driver issues that break the official SDK. Works on Linux too.
+
+## Install
+
+**Python**
+```bash
+pip install qcicada
+```
+
+**Rust**
+```toml
+[dependencies]
+qcicada = "0.1"
+```
 
 ## Quick Start
 
-### Python
-
-```bash
-pip install ./python    # requires pyserial
-```
+<table>
+<tr><th>Python</th><th>Rust</th></tr>
+<tr><td>
 
 ```python
 from qcicada import QCicada
@@ -19,41 +30,76 @@ with QCicada() as qrng:
     print(qrng.random(32).hex())
 ```
 
-### Rust
-
-```toml
-[dependencies]
-qcicada = "0.1"
-```
+</td><td>
 
 ```rust
 use qcicada::QCicada;
 
 let mut qrng = QCicada::open(None, None)?;
 let bytes = qrng.random(32)?;
+println!("{:02x?}", bytes);
 ```
 
-That's it. The device is auto-detected. If you have multiple USB-serial devices, pass the port explicitly: `QCicada(port="/dev/cu.usbserial-DK0HFP4T")`.
+</td></tr>
+</table>
 
-## Finding Your Device
+The device is auto-detected. If you have multiple USB-serial devices, pass the port explicitly:
 
 ```python
-from qcicada import find_devices, discover_devices, open_by_serial
+QCicada(port="/dev/cu.usbserial-DK0HFP4T")      # Python
+```
+```rust
+QCicada::open(Some("/dev/cu.usbserial-DK0HFP4T"), None)?;  // Rust
+```
 
-# List USB-serial ports (fast, no device communication)
+## Device Discovery
+
+<table>
+<tr><th>Python</th><th>Rust</th></tr>
+<tr><td>
+
+```python
+from qcicada import (
+    find_devices,
+    discover_devices,
+    open_by_serial,
+)
+
+# Fast port scan (no device I/O)
 find_devices()
 # ['/dev/cu.usbserial-DK0HFP4T']
 
-# Probe each port and confirm it's actually a QCicada
+# Probe and verify each device
 for dev in discover_devices():
-    print(f"{dev.port}  serial={dev.info.serial}  hw={dev.info.hw_info}")
-# /dev/cu.usbserial-DK0HFP4T  serial=QC0000000217  hw=CICADA-QRNG-1.1
+    print(dev.port, dev.info.serial)
 
-# Open a specific device by serial number
+# Open by serial number
 qrng = open_by_serial("QC0000000217")
 ```
 
-The same functions are available in Rust.
+</td><td>
+
+```rust
+use qcicada::{
+    find_devices,
+    discover_devices,
+    open_by_serial,
+};
+
+// Fast port scan (no device I/O)
+let ports = find_devices();
+
+// Probe and verify each device
+for dev in discover_devices() {
+    println!("{} {}", dev.port, dev.info.serial);
+}
+
+// Open by serial number
+let mut qrng = open_by_serial("QC0000000217")?;
+```
+
+</td></tr>
+</table>
 
 ## Entropy Modes
 
@@ -61,99 +107,182 @@ The QCicada supports three post-processing modes:
 
 | Mode | What you get |
 |------|-------------|
-| **SHA256** (default) | NIST SP 800-90B conditioned output — use this for cryptography |
-| **Raw Noise** | Noise after health-test conditioning — use this for entropy research |
+| **SHA256** (default) | NIST SP 800-90B conditioned output — use for cryptography |
+| **Raw Noise** | After health-test conditioning — use for entropy research |
 | **Raw Samples** | Unprocessed samples from the quantum optical module |
+
+<table>
+<tr><th>Python</th><th>Rust</th></tr>
+<tr><td>
 
 ```python
 from qcicada import QCicada, PostProcess
 
 with QCicada() as qrng:
-    # Default: SHA256
-    qrng.random(32).hex()
+    qrng.random(32)  # SHA256 (default)
 
-    # Switch to raw noise
     qrng.set_postprocess(PostProcess.RAW_NOISE)
-    qrng.random(32).hex()
+    qrng.random(32)
 
-    # Switch to raw samples
     qrng.set_postprocess(PostProcess.RAW_SAMPLES)
-    qrng.random(32).hex()
+    qrng.random(32)
 ```
+
+</td><td>
+
+```rust
+use qcicada::{QCicada, PostProcess};
+
+let mut qrng = QCicada::open(None, None)?;
+qrng.random(32)?;  // SHA256 (default)
+
+qrng.set_postprocess(PostProcess::RawNoise)?;
+qrng.random(32)?;
+
+qrng.set_postprocess(PostProcess::RawSamples)?;
+qrng.random(32)?;
+```
+
+</td></tr>
+</table>
+
+## Signed Reads
+
+Random bytes with a 64-byte cryptographic signature from the device's internal key. Requires firmware 5.13+.
+
+<table>
+<tr><th>Python</th><th>Rust</th></tr>
+<tr><td>
+
+```python
+result = qrng.signed_read(32)
+result.data       # 32 random bytes
+result.signature  # 64-byte signature
+```
+
+</td><td>
+
+```rust
+let result = qrng.signed_read(32)?;
+result.data       // 32 random bytes
+result.signature  // 64-byte signature
+```
+
+</td></tr>
+</table>
+
+## Continuous Mode
+
+High-throughput streaming with no per-request overhead:
+
+<table>
+<tr><th>Python</th><th>Rust</th></tr>
+<tr><td>
+
+```python
+qrng.start_continuous()
+for _ in range(100):
+    chunk = qrng.read_continuous(1024)
+qrng.stop()
+```
+
+</td><td>
+
+```rust
+qrng.start_continuous()?;
+for _ in 0..100 {
+    let chunk = qrng.read_continuous(1024)?;
+}
+qrng.stop()?;
+```
+
+</td></tr>
+</table>
 
 ## Device Info & Status
 
+<table>
+<tr><th>Python</th><th>Rust</th></tr>
+<tr><td>
+
 ```python
-with QCicada() as qrng:
-    info = qrng.get_info()
-    # DeviceInfo(serial='QC0000000217', fw_version=0x5000e,
-    #            core_version=0x1000c, hw_info='CICADA-QRNG-1.1')
+info = qrng.get_info()
+# serial, fw_version, core_version, hw_info
 
-    status = qrng.get_status()
-    # DeviceStatus(initialized=True, ready_bytes=13440, ...)
+status = qrng.get_status()
+# initialized, ready_bytes, health flags...
 
-    stats = qrng.get_statistics()
-    # DeviceStatistics(generated_bytes=4928, speed=100696, ...)
+stats = qrng.get_statistics()
+# generated_bytes, speed, failure counts...
 
-    config = qrng.get_config()
-    # DeviceConfig(postprocess=SHA256, auto_calibration=True, block_size=448, ...)
+config = qrng.get_config()
+# postprocess, block_size, auto_calibration...
 ```
 
-## Full Configuration
+</td><td>
+
+```rust
+let info = qrng.get_info()?;
+// serial, fw_version, core_version, hw_info
+
+let status = qrng.get_status()?;
+// initialized, ready_bytes, health flags...
+
+let stats = qrng.get_statistics()?;
+// generated_bytes, speed, failure counts...
+
+let config = qrng.get_config()?;
+// postprocess, block_size, auto_calibration...
+```
+
+</td></tr>
+</table>
+
+## Configuration
 
 Every device setting is readable and writable:
+
+<table>
+<tr><th>Python</th><th>Rust</th></tr>
+<tr><td>
 
 ```python
 from dataclasses import replace
 
 config = qrng.get_config()
-
-# Modify and write back
-config = replace(config, block_size=256, auto_calibration=False)
+config = replace(config,
+    block_size=256,
+    auto_calibration=False,
+)
 qrng.set_config(config)
 ```
+
+</td><td>
+
+```rust
+let mut config = qrng.get_config()?;
+config.block_size = 256;
+config.auto_calibration = false;
+qrng.set_config(&config)?;
+```
+
+</td></tr>
+</table>
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `postprocess` | `PostProcess` | SHA256, RawNoise, or RawSamples |
-| `initial_level` | `float` | LED initial level |
+| `initial_level` | `f32` | LED initial level |
 | `startup_test` | `bool` | Run health test on startup |
 | `auto_calibration` | `bool` | Auto-calibrate light source |
 | `repetition_count` | `bool` | NIST SP 800-90B repetition count test |
 | `adaptive_proportion` | `bool` | NIST SP 800-90B adaptive proportion test |
 | `bit_count` | `bool` | Crypta Labs bit balance test |
 | `generate_on_error` | `bool` | Keep generating if a health test fails |
-| `n_lsbits` | `int` | Number of LSBs to extract per sample |
-| `hash_input_size` | `int` | Bytes fed into SHA256 per output block |
-| `block_size` | `int` | Output block size in bytes |
-| `autocalibration_target` | `int` | Target value for auto-calibration |
-
-## Signed Reads
-
-Get random bytes with a cryptographic signature (requires firmware 5.13+):
-
-```python
-result = qrng.signed_read(32)
-print(result.data.hex())       # 32 random bytes
-print(result.signature.hex())  # 64-byte signature
-```
-
-The signature is produced by the device's internal asymmetric key. Check the QCicada documentation for how to extract the public key and verify signatures.
-
-## Continuous Mode
-
-For high-throughput streaming, use continuous mode instead of one-shot:
-
-```python
-with QCicada() as qrng:
-    qrng.start_continuous()
-    for _ in range(100):
-        chunk = qrng.read_continuous(1024)
-        process(chunk)
-    qrng.stop()
-```
-
-The device streams random data until `stop()` is called. There's no per-request overhead, so this is faster for bulk entropy collection.
+| `n_lsbits` | `u8` | Number of LSBs to extract per sample |
+| `hash_input_size` | `u8` | Bytes fed into SHA256 per output block |
+| `block_size` | `u16` | Output block size in bytes |
+| `autocalibration_target` | `u16` | Target value for auto-calibration |
 
 ## API Reference
 
@@ -174,7 +303,30 @@ The device streams random data until `stop()` is called. There's no per-request 
 | `stop()` | Halt any active generation |
 | `close()` | Close serial port |
 
-Rust: `QCicada` also implements `std::io::Read`, so it works anywhere a reader is expected.
+Rust also implements `std::io::Read`, so `QCicada` works anywhere a reader is expected.
+
+## Project Structure
+
+```
+qcicada/
+├── src/              # Rust crate
+│   ├── lib.rs
+│   ├── device.rs     # QCicada high-level API
+│   ├── protocol.rs   # Wire protocol (pure, no I/O)
+│   ├── serial.rs     # Serial transport + macOS fixes
+│   ├── discovery.rs  # Device discovery
+│   └── types.rs      # Shared data types
+├── tests/            # Rust integration tests (device required)
+├── examples/         # Rust examples
+├── python/
+│   ├── src/qcicada/  # Python package (mirrors Rust API)
+│   ├── tests/        # Python unit + integration tests
+│   └── examples/     # Python examples
+├── Cargo.toml
+└── python/pyproject.toml
+```
+
+Both SDKs implement the same wire protocol and share the same test vectors. Changes to one should be reflected in the other.
 
 ## Why Not pyqcc?
 
