@@ -49,6 +49,17 @@ fn main() -> Result<(), qcicada::QCicadaError> {
     qrng.set_postprocess(PostProcess::Sha256)?;
     println!("\nRestored SHA256 mode.");
 
+    // Signed read (FW 5.13+)
+    let signed = qrng.signed_read(32)?;
+    println!("\nSigned data: {}", hex::encode(&signed.data));
+    println!("Signature:   {}", hex::encode(&signed.signature));
+
+    // Continuous mode
+    qrng.start_continuous()?;
+    let chunk = qrng.read_continuous(64)?;
+    println!("\nContinuous:  {}", hex::encode(&chunk));
+    qrng.stop()?;
+
     // Statistics
     let stats = qrng.get_statistics()?;
     println!("\nGenerated: {} bytes", stats.generated_bytes);

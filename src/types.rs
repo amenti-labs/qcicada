@@ -73,3 +73,12 @@ pub struct DeviceStatistics {
     pub sensif_average: u16,
     pub ledctrl_level: f32,
 }
+
+/// Result of a signed read: random data + cryptographic signature.
+#[derive(Debug, Clone)]
+pub struct SignedRead {
+    /// The random bytes.
+    pub data: Vec<u8>,
+    /// 64-byte cryptographic signature over the data.
+    pub signature: Vec<u8>,
+}

@@ -7,7 +7,7 @@ Override with: QCICADA_PORT=/dev/cu.usbserial-DK0HFP4T pytest python/tests/test_
 
 import pytest
 from qcicada import (
-    QCicada, QCicadaError, PostProcess,
+    QCicada, QCicadaError, PostProcess, SignedRead,
     find_devices, probe_device, discover_devices,
 )
 from dataclasses import replace
@@ -111,6 +111,55 @@ class TestRandom:
         buf = bytearray(256)
         qrng.fill_bytes(buf)
         assert any(b != 0 for b in buf)
+
+
+class TestSignedRead:
+    def test_signed_read_32_bytes(self, qrng):
+        qrng.set_postprocess(PostProcess.SHA256)
+        result = qrng.signed_read(32)
+        assert isinstance(result, SignedRead)
+        assert len(result.data) == 32
+        assert len(result.signature) == 64
+        assert any(b != 0 for b in result.data), "data should not be all zeros"
+        assert any(b != 0 for b in result.signature), "signature should not be all zeros"
+
+    def test_signed_read_different_each_time(self, qrng):
+        a = qrng.signed_read(32)
+        b = qrng.signed_read(32)
+        assert a.data != b.data
+        assert a.signature != b.signature
+
+    def test_signed_read_invalid_size(self, qrng):
+        with pytest.raises(ValueError):
+            qrng.signed_read(0)
+        with pytest.raises(ValueError):
+            qrng.signed_read(-1)
+        with pytest.raises(ValueError):
+            qrng.signed_read(70000)
+
+
+class TestContinuousMode:
+    def test_continuous_read(self, qrng):
+        qrng.start_continuous()
+        data = qrng.read_continuous(64)
+        assert len(data) == 64
+        assert any(b != 0 for b in data)
+        qrng.stop()
+        status = qrng.get_status()
+        assert status.initialized
+
+    def test_continuous_multiple_reads(self, qrng):
+        qrng.start_continuous()
+        a = qrng.read_continuous(32)
+        b = qrng.read_continuous(32)
+        assert a != b
+        qrng.stop()
+
+    def test_continuous_zero_returns_empty(self, qrng):
+        qrng.start_continuous()
+        data = qrng.read_continuous(0)
+        assert data == b''
+        qrng.stop()
 
 
 class TestStop:

@@ -14,6 +14,7 @@ pub const CMD_SET_CONFIG: u8 = 0x08;
 pub const CMD_GET_STATISTICS: u8 = 0x09;
 pub const CMD_RESET: u8 = 0x0A;
 pub const CMD_GET_INFO: u8 = 0x0B;
+pub const CMD_SIGNED_READ: u8 = 0x51;
 
 // --- Response codes ---
 pub const RESP_ACK: u8 = 0x11;
@@ -21,6 +22,7 @@ pub const RESP_NACK: u8 = 0x12;
 pub const RESP_CONFIG: u8 = 0x17;
 pub const RESP_STATISTICS: u8 = 0x19;
 pub const RESP_INFO: u8 = 0x1B;
+pub const RESP_SIGNED_READ: u8 = 0x52;
 
 // --- Payload sizes ---
 pub const PAYLOAD_ACK: usize = 5;
@@ -29,7 +31,11 @@ pub const PAYLOAD_STATISTICS: usize = 30;
 pub const PAYLOAD_INFO: usize = 56;
 
 // --- Start mode ---
+pub const START_CONTINUOUS: u8 = 0x00;
 pub const START_ONE_SHOT: u8 = 0x01;
+
+/// Signature length for signed reads (bytes).
+pub const SIGNATURE_LEN: usize = 64;
 
 pub const MAX_BLOCK_SIZE: usize = 4096;
 
@@ -44,6 +50,7 @@ pub fn expected_response(cmd: u8) -> Option<u8> {
         CMD_GET_STATISTICS => Some(RESP_STATISTICS),
         CMD_RESET => Some(RESP_ACK),
         CMD_GET_INFO => Some(RESP_INFO),
+        CMD_SIGNED_READ => Some(RESP_SIGNED_READ),
         _ => None,
     }
 }
@@ -56,6 +63,7 @@ pub fn payload_size(resp: u8) -> usize {
         RESP_CONFIG => PAYLOAD_CONFIG,
         RESP_STATISTICS => PAYLOAD_STATISTICS,
         RESP_INFO => PAYLOAD_INFO,
+        RESP_SIGNED_READ => 0, // data + signature follow separately
         _ => 0,
     }
 }
@@ -72,6 +80,18 @@ pub fn build_cmd(code: u8, payload: Option<&[u8]>) -> Vec<u8> {
 /// Build a START command for one-shot mode.
 pub fn build_start_one_shot(length: u16) -> Vec<u8> {
     let mut frame = vec![CMD_START, START_ONE_SHOT];
+    frame.extend_from_slice(&length.to_le_bytes());
+    frame
+}
+
+/// Build a START command for continuous mode.
+pub fn build_start_continuous() -> Vec<u8> {
+    vec![CMD_START, START_CONTINUOUS, 0x00, 0x00]
+}
+
+/// Build a SIGNED_READ command.
+pub fn build_signed_read(length: u16) -> Vec<u8> {
+    let mut frame = vec![CMD_SIGNED_READ];
     frame.extend_from_slice(&length.to_le_bytes());
     frame
 }
@@ -559,6 +579,7 @@ mod tests {
         assert_eq!(CMD_GET_STATISTICS, 0x09);
         assert_eq!(CMD_RESET, 0x0A);
         assert_eq!(CMD_GET_INFO, 0x0B);
+        assert_eq!(CMD_SIGNED_READ, 0x51);
     }
 
     #[test]
@@ -568,5 +589,32 @@ mod tests {
         assert_eq!(RESP_CONFIG, 0x17);
         assert_eq!(RESP_STATISTICS, 0x19);
         assert_eq!(RESP_INFO, 0x1B);
+        assert_eq!(RESP_SIGNED_READ, 0x52);
+    }
+
+    // -- Signed read and continuous mode builders --
+
+    #[test]
+    fn build_signed_read_format() {
+        let frame = build_signed_read(32);
+        assert_eq!(frame[0], CMD_SIGNED_READ);
+        assert_eq!(u16::from_le_bytes([frame[1], frame[2]]), 32);
+        assert_eq!(frame.len(), 3);
+    }
+
+    #[test]
+    fn build_start_continuous_format() {
+        let frame = build_start_continuous();
+        assert_eq!(frame[0], CMD_START);
+        assert_eq!(frame[1], START_CONTINUOUS);
+        assert_eq!(frame[2], 0x00); // length low
+        assert_eq!(frame[3], 0x00); // length high
+        assert_eq!(frame.len(), 4);
+    }
+
+    #[test]
+    fn signed_read_response_mapping() {
+        assert_eq!(expected_response(CMD_SIGNED_READ), Some(RESP_SIGNED_READ));
+        assert_eq!(payload_size(RESP_SIGNED_READ), 0);
     }
 }

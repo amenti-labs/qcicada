@@ -109,6 +109,71 @@ impl QCicada {
         Ok(data)
     }
 
+    /// Get `n` random bytes with a 64-byte cryptographic signature.
+    ///
+    /// Requires QCicada firmware 5.13+. The signature is produced by the device's
+    /// internal asymmetric key. See device documentation for the public key.
+    pub fn signed_read(&mut self, n: u16) -> Result<SignedRead, QCicadaError> {
+        if n == 0 {
+            return Err(QCicadaError::Protocol(
+                "signed_read requires at least 1 byte".into(),
+            ));
+        }
+        let frame = build_signed_read(n);
+        self.command(CMD_SIGNED_READ, Some(&frame[1..]))?
+            .ok_or(QCicadaError::Protocol("NACK on SIGNED_READ".into()))?;
+
+        // Read random data + 64-byte signature
+        let total = n as usize + SIGNATURE_LEN;
+        let timeout_ms = 500 + (n as u64) / 10;
+        self.transport
+            .set_timeout(Duration::from_millis(timeout_ms))?;
+        let buf = self.transport.read(total)?;
+        if buf.len() != total {
+            return Err(QCicadaError::Protocol(format!(
+                "Expected {} bytes (data+sig), got {}",
+                total,
+                buf.len()
+            )));
+        }
+        Ok(SignedRead {
+            data: buf[..n as usize].to_vec(),
+            signature: buf[n as usize..].to_vec(),
+        })
+    }
+
+    /// Start continuous random data generation.
+    ///
+    /// After calling this, use [`read_continuous`] to read streaming data.
+    /// Call [`stop`] to end continuous mode.
+    pub fn start_continuous(&mut self) -> Result<(), QCicadaError> {
+        let frame = build_start_continuous();
+        self.command(CMD_START, Some(&frame[1..]))?
+            .ok_or(QCicadaError::Protocol("NACK on START continuous".into()))?;
+        Ok(())
+    }
+
+    /// Read bytes from an active continuous mode stream.
+    ///
+    /// Call [`start_continuous`] first. Returns exactly `n` bytes or an error.
+    pub fn read_continuous(&mut self, n: usize) -> Result<Vec<u8>, QCicadaError> {
+        if n == 0 {
+            return Ok(Vec::new());
+        }
+        let timeout_ms = 500 + (n as u64) / 10;
+        self.transport
+            .set_timeout(Duration::from_millis(timeout_ms))?;
+        let data = self.transport.read(n)?;
+        if data.len() != n {
+            return Err(QCicadaError::Protocol(format!(
+                "Expected {} continuous bytes, got {}",
+                n,
+                data.len()
+            )));
+        }
+        Ok(data)
+    }
+
     /// Change post-processing mode, preserving other config settings.
     pub fn set_postprocess(&mut self, mode: PostProcess) -> Result<(), QCicadaError> {
         let mut config = self.get_config()?;

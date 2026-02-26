@@ -209,6 +209,49 @@ fn probe_device_on_bogus_port() {
     assert!(info.is_none(), "probe should return None for bogus port");
 }
 
+#[test]
+fn signed_read_32_bytes() {
+    let mut qrng = require_device!();
+    qrng.set_postprocess(PostProcess::Sha256).expect("set SHA256 failed");
+    let result = qrng.signed_read(32).expect("signed_read failed");
+    assert_eq!(result.data.len(), 32);
+    assert_eq!(result.signature.len(), 64);
+    assert!(result.data.iter().any(|&b| b != 0), "data should not be all zeros");
+    assert!(result.signature.iter().any(|&b| b != 0), "signature should not be all zeros");
+}
+
+#[test]
+fn signed_read_different_each_time() {
+    let mut qrng = require_device!();
+    let a = qrng.signed_read(32).expect("signed_read 1 failed");
+    let b = qrng.signed_read(32).expect("signed_read 2 failed");
+    assert_ne!(a.data, b.data, "two signed reads should produce different data");
+    // Signatures should also differ (different data → different sig)
+    assert_ne!(a.signature, b.signature, "signatures should differ");
+}
+
+#[test]
+fn continuous_mode_read() {
+    let mut qrng = require_device!();
+    qrng.start_continuous().expect("start_continuous failed");
+    let data = qrng.read_continuous(64).expect("read_continuous failed");
+    assert_eq!(data.len(), 64);
+    assert!(data.iter().any(|&b| b != 0), "continuous data should not be all zeros");
+    qrng.stop().expect("stop after continuous failed");
+    // Device should still work after stopping continuous mode
+    let _ = qrng.get_status().expect("get_status after continuous stop failed");
+}
+
+#[test]
+fn continuous_mode_multiple_reads() {
+    let mut qrng = require_device!();
+    qrng.start_continuous().expect("start_continuous failed");
+    let a = qrng.read_continuous(32).expect("read 1 failed");
+    let b = qrng.read_continuous(32).expect("read 2 failed");
+    assert_ne!(a, b, "consecutive reads should differ");
+    qrng.stop().expect("stop failed");
+}
+
 // NOTE: probe_device_on_known_port and open_by_serial are not tested here because
 // integration tests run in parallel threads and the serial port can only be opened
 // by one test at a time. These are exercised by discover_devices_finds_device above

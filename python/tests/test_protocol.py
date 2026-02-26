@@ -7,10 +7,12 @@ import struct
 import pytest
 from qcicada.protocol import (
     CMD_GET_STATUS, CMD_START, CMD_STOP, CMD_GET_CONFIG, CMD_SET_CONFIG,
-    CMD_GET_STATISTICS, CMD_RESET, CMD_GET_INFO,
+    CMD_GET_STATISTICS, CMD_RESET, CMD_GET_INFO, CMD_SIGNED_READ,
     RESP_ACK, RESP_NACK, RESP_CONFIG, RESP_STATISTICS, RESP_INFO,
-    SUCCESS_RESPONSE, PAYLOAD_SIZE,
-    build_cmd, build_start_one_shot,
+    RESP_SIGNED_READ,
+    SUCCESS_RESPONSE, PAYLOAD_SIZE, SIGNATURE_LEN,
+    build_cmd, build_start_one_shot, build_start_continuous,
+    build_signed_read,
     parse_status, parse_info, parse_config, parse_statistics,
     serialize_config, checksum8,
 )
@@ -82,6 +84,7 @@ class TestProtocolConstants:
         assert CMD_GET_STATISTICS == b'\x09'
         assert CMD_RESET == b'\x0A'
         assert CMD_GET_INFO == b'\x0B'
+        assert CMD_SIGNED_READ == b'\x51'
 
     def test_response_codes(self):
         assert RESP_ACK == b'\x11'
@@ -89,6 +92,7 @@ class TestProtocolConstants:
         assert RESP_CONFIG == b'\x17'
         assert RESP_STATISTICS == b'\x19'
         assert RESP_INFO == b'\x1B'
+        assert RESP_SIGNED_READ == b'\x52'
 
 
 # -- Status parsing --
@@ -346,3 +350,44 @@ class TestCrossLanguageConsistency:
         assert data[7] == 64
         assert struct.unpack('<H', data[8:10])[0] == 448
         assert struct.unpack('<H', data[10:12])[0] == 2048
+
+
+# -- Signed read and continuous mode protocol --
+
+class TestBuildSignedRead:
+    def test_format(self):
+        frame = build_signed_read(32)
+        assert frame[0:1] == CMD_SIGNED_READ
+        assert struct.unpack('<H', frame[1:3])[0] == 32
+        assert len(frame) == 3
+
+    def test_large_length(self):
+        frame = build_signed_read(4096)
+        assert struct.unpack('<H', frame[1:3])[0] == 4096
+
+
+class TestBuildStartContinuous:
+    def test_format(self):
+        frame = build_start_continuous()
+        assert frame[0:1] == CMD_START
+        assert frame[1] == 0x00  # continuous mode
+        assert frame[2] == 0x00  # length low
+        assert frame[3] == 0x00  # length high
+        assert len(frame) == 4
+
+
+class TestSignedReadProtocol:
+    def test_command_code(self):
+        assert CMD_SIGNED_READ == b'\x51'
+
+    def test_response_code(self):
+        assert RESP_SIGNED_READ == b'\x52'
+
+    def test_response_mapping(self):
+        assert SUCCESS_RESPONSE[CMD_SIGNED_READ] == RESP_SIGNED_READ
+
+    def test_payload_size_zero(self):
+        assert PAYLOAD_SIZE[RESP_SIGNED_READ] == 0
+
+    def test_signature_len(self):
+        assert SIGNATURE_LEN == 64

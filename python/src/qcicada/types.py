@@ -61,3 +61,10 @@ class DeviceStatistics:
     speed: int
     sensif_average: int
     ledctrl_level: float
+
+
+@dataclass
+class SignedRead:
+    """Result of a signed read: random data + cryptographic signature."""
+    data: bytes
+    signature: bytes

@@ -46,6 +46,17 @@ with QCicada() as qrng:
     qrng.set_postprocess(PostProcess.SHA256)
     print("\nRestored SHA256 mode.")
 
+    # Signed read (FW 5.13+)
+    signed = qrng.signed_read(32)
+    print(f"\nSigned data: {signed.data.hex()}")
+    print(f"Signature:   {signed.signature.hex()}")
+
+    # Continuous mode
+    qrng.start_continuous()
+    chunk = qrng.read_continuous(64)
+    print(f"\nContinuous:  {chunk.hex()}")
+    qrng.stop()
+
     # Statistics
     stats = qrng.get_statistics()
     print(f"\nGenerated: {stats.generated_bytes} bytes")

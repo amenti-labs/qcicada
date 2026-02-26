@@ -9,6 +9,7 @@ from .types import (
     DeviceStatistics,
     DeviceStatus,
     PostProcess,
+    SignedRead,
 )
 
 __all__ = [
@@ -24,4 +25,5 @@ __all__ = [
     'DeviceStatistics',
     'DeviceStatus',
     'PostProcess',
+    'SignedRead',
 ]

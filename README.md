@@ -128,11 +128,41 @@ qrng.set_config(config)
 | `block_size` | `int` | Output block size in bytes |
 | `autocalibration_target` | `int` | Target value for auto-calibration |
 
+## Signed Reads
+
+Get random bytes with a cryptographic signature (requires firmware 5.13+):
+
+```python
+result = qrng.signed_read(32)
+print(result.data.hex())       # 32 random bytes
+print(result.signature.hex())  # 64-byte signature
+```
+
+The signature is produced by the device's internal asymmetric key. Check the QCicada documentation for how to extract the public key and verify signatures.
+
+## Continuous Mode
+
+For high-throughput streaming, use continuous mode instead of one-shot:
+
+```python
+with QCicada() as qrng:
+    qrng.start_continuous()
+    for _ in range(100):
+        chunk = qrng.read_continuous(1024)
+        process(chunk)
+    qrng.stop()
+```
+
+The device streams random data until `stop()` is called. There's no per-request overhead, so this is faster for bulk entropy collection.
+
 ## API Reference
 
 | Method | Description |
 |--------|-------------|
 | `random(n)` | Get `n` random bytes (1–65535, one-shot) |
+| `signed_read(n)` | Get `n` random bytes + 64-byte signature (FW 5.13+) |
+| `start_continuous()` | Start continuous streaming mode |
+| `read_continuous(n)` | Read `n` bytes from continuous stream |
 | `fill_bytes(buf)` | Fill a buffer of any size (auto-chunks) |
 | `get_info()` | Serial number, firmware version, hardware |
 | `get_status()` | Health flags, ready byte count |

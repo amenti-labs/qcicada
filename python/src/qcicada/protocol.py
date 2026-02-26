@@ -19,6 +19,7 @@ CMD_SET_CONFIG = b'\x08'
 CMD_GET_STATISTICS = b'\x09'
 CMD_RESET = b'\x0A'
 CMD_GET_INFO = b'\x0B'
+CMD_SIGNED_READ = b'\x51'
 
 # --- Response codes ---
 RESP_ACK = b'\x11'
@@ -26,6 +27,7 @@ RESP_NACK = b'\x12'
 RESP_CONFIG = b'\x17'
 RESP_STATISTICS = b'\x19'
 RESP_INFO = b'\x1B'
+RESP_SIGNED_READ = b'\x52'
 
 # --- Expected response for each command ---
 SUCCESS_RESPONSE: dict[bytes, bytes] = {
@@ -37,6 +39,7 @@ SUCCESS_RESPONSE: dict[bytes, bytes] = {
     CMD_GET_STATISTICS: RESP_STATISTICS,
     CMD_RESET: RESP_ACK,
     CMD_GET_INFO: RESP_INFO,
+    CMD_SIGNED_READ: RESP_SIGNED_READ,
 }
 
 # --- Payload sizes for each response code ---
@@ -46,10 +49,15 @@ PAYLOAD_SIZE: dict[bytes, int] = {
     RESP_CONFIG: 12,      # Full-mode cmdctrl_config_t
     RESP_STATISTICS: 30,  # Full-mode cmdctrl_statistics_t
     RESP_INFO: 56,        # 4+4+24+24
+    RESP_SIGNED_READ: 0,  # data + signature follow separately
 }
 
 # --- Start mode ---
+START_CONTINUOUS = 0x00
 START_ONE_SHOT = 0x01
+
+# --- Signature ---
+SIGNATURE_LEN = 64
 
 MAX_BLOCK_SIZE = 4096
 
@@ -65,6 +73,18 @@ def build_start_one_shot(length: int) -> bytes:
     """Build a START command for one-shot mode."""
     payload = struct.pack('<BH', START_ONE_SHOT, length)
     return build_cmd(CMD_START, payload)
+
+
+def build_start_continuous() -> bytes:
+    """Build a START command for continuous mode."""
+    payload = struct.pack('<BH', START_CONTINUOUS, 0)
+    return build_cmd(CMD_START, payload)
+
+
+def build_signed_read(length: int) -> bytes:
+    """Build a SIGNED_READ command."""
+    payload = struct.pack('<H', length)
+    return build_cmd(CMD_SIGNED_READ, payload)
 
 
 def parse_status(data: bytes) -> DeviceStatus:

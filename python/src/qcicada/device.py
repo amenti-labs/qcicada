@@ -7,15 +7,17 @@ from dataclasses import replace
 
 from .protocol import (
     CMD_GET_CONFIG, CMD_GET_INFO, CMD_GET_STATISTICS, CMD_GET_STATUS,
-    CMD_RESET, CMD_SET_CONFIG, CMD_START, CMD_STOP,
+    CMD_RESET, CMD_SET_CONFIG, CMD_SIGNED_READ, CMD_START, CMD_STOP,
     RESP_ACK, RESP_NACK, SUCCESS_RESPONSE, PAYLOAD_SIZE,
-    MAX_BLOCK_SIZE,
-    build_cmd, build_start_one_shot, serialize_config,
+    MAX_BLOCK_SIZE, SIGNATURE_LEN,
+    build_cmd, build_start_one_shot, build_start_continuous,
+    build_signed_read, serialize_config,
     parse_config, parse_info, parse_statistics, parse_status,
 )
 from .serial import SerialTransport, find_devices
 from .types import (
     DeviceConfig, DeviceInfo, DeviceStatistics, DeviceStatus, PostProcess,
+    SignedRead,
 )
 
 logger = logging.getLogger(__name__)
@@ -122,6 +124,72 @@ class QCicada:
             raise QCicadaError(f'Failed reading random data: {exc}') from exc
         if len(data) != n:
             raise QCicadaError(f'Expected {n} bytes, got {len(data)}')
+        return data
+
+    def signed_read(self, n: int) -> SignedRead:
+        """Get ``n`` random bytes with a 64-byte cryptographic signature.
+
+        Requires QCicada firmware 5.13+. The signature is produced by the
+        device's internal asymmetric key.
+
+        Args:
+            n: Number of random bytes to read (1-65535).
+
+        Raises:
+            QCicadaError: If the device fails to respond.
+            ValueError: If n is out of range.
+        """
+        if not 1 <= n <= 65535:
+            raise ValueError(f'n must be 1-65535, got {n}')
+        frame = build_signed_read(n)
+        result = self._command(CMD_SIGNED_READ, frame[1:])
+        if result is None:
+            raise QCicadaError('Failed to start signed read')
+        # Read random data + 64-byte signature
+        total = n + SIGNATURE_LEN
+        self._transport.set_timeout(0.5 + 0.0001 * n)
+        try:
+            buf = self._transport.read(total)
+        except Exception as exc:
+            raise QCicadaError(f'Failed reading signed data: {exc}') from exc
+        if len(buf) != total:
+            raise QCicadaError(f'Expected {total} bytes (data+sig), got {len(buf)}')
+        return SignedRead(data=buf[:n], signature=buf[n:])
+
+    def start_continuous(self) -> None:
+        """Start continuous random data generation.
+
+        After calling this, use :meth:`read_continuous` to read streaming data.
+        Call :meth:`stop` to end continuous mode.
+
+        Raises:
+            QCicadaError: If the device rejects the command.
+        """
+        frame = build_start_continuous()
+        result = self._command(CMD_START, frame[1:])
+        if result is None:
+            raise QCicadaError('Failed to start continuous mode')
+
+    def read_continuous(self, n: int) -> bytes:
+        """Read bytes from an active continuous mode stream.
+
+        Call :meth:`start_continuous` first. Returns exactly ``n`` bytes.
+
+        Args:
+            n: Number of bytes to read.
+
+        Raises:
+            QCicadaError: If the read fails or times out.
+        """
+        if n == 0:
+            return b''
+        self._transport.set_timeout(0.5 + 0.0001 * n)
+        try:
+            data = self._transport.read(n)
+        except Exception as exc:
+            raise QCicadaError(f'Failed reading continuous data: {exc}') from exc
+        if len(data) != n:
+            raise QCicadaError(f'Expected {n} continuous bytes, got {len(data)}')
         return data
 
     def fill_bytes(self, buf: bytearray) -> None:
