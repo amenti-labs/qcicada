@@ -252,6 +252,46 @@ fn continuous_mode_multiple_reads() {
     qrng.stop().expect("stop failed");
 }
 
+#[test]
+fn get_dev_pub_key() {
+    let mut qrng = require_device!();
+    let pub_key = qrng.get_dev_pub_key().expect("get_dev_pub_key failed");
+    assert_eq!(pub_key.len(), 64, "public key should be 64 bytes");
+    assert!(pub_key.iter().any(|&b| b != 0), "public key should not be all zeros");
+    println!("Device pub key: {}", hex::encode(&pub_key));
+}
+
+#[test]
+fn get_dev_certificate() {
+    let mut qrng = require_device!();
+    let cert = qrng.get_dev_certificate().expect("get_dev_certificate failed");
+    assert_eq!(cert.len(), 64, "certificate should be 64 bytes");
+    println!("Device certificate: {}", hex::encode(&cert));
+}
+
+#[test]
+fn signed_read_verified_with_device_key() {
+    let mut qrng = require_device!();
+    let pub_key = qrng.get_dev_pub_key().expect("get_dev_pub_key failed");
+
+    // Verified signed read should succeed
+    let result = qrng
+        .signed_read_verified(32, &pub_key)
+        .expect("signed_read_verified failed");
+    assert_eq!(result.data.len(), 32);
+    assert_eq!(result.signature.len(), 64);
+    println!("Verified signed read: {} bytes OK", result.data.len());
+}
+
+#[test]
+fn signed_read_verified_wrong_key_fails() {
+    let mut qrng = require_device!();
+    // Use a bogus public key — verification should fail
+    let bogus_key = vec![0x42u8; 64];
+    let result = qrng.signed_read_verified(32, &bogus_key);
+    assert!(result.is_err(), "verification with wrong key should fail");
+}
+
 // NOTE: probe_device_on_known_port and open_by_serial are not tested here because
 // integration tests run in parallel threads and the serial port can only be opened
 // by one test at a time. These are exercised by discover_devices_finds_device above
