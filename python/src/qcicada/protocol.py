@@ -21,6 +21,11 @@ CMD_RESET = b'\x0A'
 CMD_GET_INFO = b'\x0B'
 CMD_SIGNED_READ = b'\x51'
 
+# --- QCicada custom commands (0xF0+) ---
+CMD_GET_DEV_PUB_KEY = b'\xF7'
+CMD_REBOOT = b'\xF8'
+CMD_GET_DEV_CERTIFICATE = b'\xF9'
+
 # --- Response codes ---
 RESP_ACK = b'\x11'
 RESP_NACK = b'\x12'
@@ -28,6 +33,16 @@ RESP_CONFIG = b'\x17'
 RESP_STATISTICS = b'\x19'
 RESP_INFO = b'\x1B'
 RESP_SIGNED_READ = b'\x52'
+
+# --- QCicada custom responses ---
+RESP_CUSTOM_OK = b'\xF8'
+RESP_DEV_PUB_KEY = b'\xF9'
+RESP_DEV_CERTIFICATE = b'\xFB'
+
+# --- Key/certificate sizes ---
+PUB_KEY_LEN = 64
+CERTIFICATE_LEN = 64
+CUSTOM_MAGIC = b'\xA1\x25'
 
 # --- Expected response for each command ---
 SUCCESS_RESPONSE: dict[bytes, bytes] = {
@@ -40,16 +55,22 @@ SUCCESS_RESPONSE: dict[bytes, bytes] = {
     CMD_RESET: RESP_ACK,
     CMD_GET_INFO: RESP_INFO,
     CMD_SIGNED_READ: RESP_SIGNED_READ,
+    CMD_GET_DEV_PUB_KEY: RESP_DEV_PUB_KEY,
+    CMD_REBOOT: RESP_CUSTOM_OK,
+    CMD_GET_DEV_CERTIFICATE: RESP_DEV_CERTIFICATE,
 }
 
 # --- Payload sizes for each response code ---
 PAYLOAD_SIZE: dict[bytes, int] = {
-    RESP_ACK: 5,          # 1 byte flags + 4 bytes ready_bytes
+    RESP_ACK: 5,              # 1 byte flags + 4 bytes ready_bytes
     RESP_NACK: 0,
-    RESP_CONFIG: 12,      # Full-mode cmdctrl_config_t
-    RESP_STATISTICS: 30,  # Full-mode cmdctrl_statistics_t
-    RESP_INFO: 56,        # 4+4+24+24
-    RESP_SIGNED_READ: 0,  # data + signature follow separately
+    RESP_CONFIG: 12,          # Full-mode cmdctrl_config_t
+    RESP_STATISTICS: 30,      # Full-mode cmdctrl_statistics_t
+    RESP_INFO: 56,            # 4+4+24+24
+    RESP_SIGNED_READ: 0,      # data + signature follow separately
+    RESP_CUSTOM_OK: 0,
+    RESP_DEV_PUB_KEY: PUB_KEY_LEN,
+    RESP_DEV_CERTIFICATE: CERTIFICATE_LEN,
 }
 
 # --- Start mode ---
@@ -85,6 +106,11 @@ def build_signed_read(length: int) -> bytes:
     """Build a SIGNED_READ command."""
     payload = struct.pack('<H', length)
     return build_cmd(CMD_SIGNED_READ, payload)
+
+
+def build_reboot() -> bytes:
+    """Build a REBOOT command (with QCicada magic prefix)."""
+    return CMD_REBOOT + CUSTOM_MAGIC
 
 
 def parse_status(data: bytes) -> DeviceStatus:

@@ -16,6 +16,11 @@ pub const CMD_RESET: u8 = 0x0A;
 pub const CMD_GET_INFO: u8 = 0x0B;
 pub const CMD_SIGNED_READ: u8 = 0x51;
 
+// --- QCicada custom commands (0xF0+) ---
+pub const CMD_GET_DEV_PUB_KEY: u8 = 0xF7;
+pub const CMD_REBOOT: u8 = 0xF8;
+pub const CMD_GET_DEV_CERTIFICATE: u8 = 0xF9;
+
 // --- Response codes ---
 pub const RESP_ACK: u8 = 0x11;
 pub const RESP_NACK: u8 = 0x12;
@@ -23,6 +28,11 @@ pub const RESP_CONFIG: u8 = 0x17;
 pub const RESP_STATISTICS: u8 = 0x19;
 pub const RESP_INFO: u8 = 0x1B;
 pub const RESP_SIGNED_READ: u8 = 0x52;
+
+// --- QCicada custom responses ---
+pub const RESP_CUSTOM_OK: u8 = 0xF8;
+pub const RESP_DEV_PUB_KEY: u8 = 0xF9;
+pub const RESP_DEV_CERTIFICATE: u8 = 0xFB;
 
 // --- Payload sizes ---
 pub const PAYLOAD_ACK: usize = 5;
@@ -36,6 +46,15 @@ pub const START_ONE_SHOT: u8 = 0x01;
 
 /// Signature length for signed reads (bytes).
 pub const SIGNATURE_LEN: usize = 64;
+
+/// ECDSA P-256 public key length (uncompressed x || y, 32 + 32).
+pub const PUB_KEY_LEN: usize = 64;
+
+/// Device certificate length (ECDSA r || s, 32 + 32).
+pub const CERTIFICATE_LEN: usize = 64;
+
+/// QCicada custom command magic number prefix.
+pub const CUSTOM_MAGIC: [u8; 2] = [0xA1, 0x25];
 
 pub const MAX_BLOCK_SIZE: usize = 4096;
 
@@ -51,6 +70,9 @@ pub fn expected_response(cmd: u8) -> Option<u8> {
         CMD_RESET => Some(RESP_ACK),
         CMD_GET_INFO => Some(RESP_INFO),
         CMD_SIGNED_READ => Some(RESP_SIGNED_READ),
+        CMD_GET_DEV_PUB_KEY => Some(RESP_DEV_PUB_KEY),
+        CMD_REBOOT => Some(RESP_CUSTOM_OK),
+        CMD_GET_DEV_CERTIFICATE => Some(RESP_DEV_CERTIFICATE),
         _ => None,
     }
 }
@@ -64,6 +86,9 @@ pub fn payload_size(resp: u8) -> usize {
         RESP_STATISTICS => PAYLOAD_STATISTICS,
         RESP_INFO => PAYLOAD_INFO,
         RESP_SIGNED_READ => 0, // data + signature follow separately
+        RESP_CUSTOM_OK => 0,
+        RESP_DEV_PUB_KEY => PUB_KEY_LEN,
+        RESP_DEV_CERTIFICATE => CERTIFICATE_LEN,
         _ => 0,
     }
 }
@@ -94,6 +119,45 @@ pub fn build_signed_read(length: u16) -> Vec<u8> {
     let mut frame = vec![CMD_SIGNED_READ];
     frame.extend_from_slice(&length.to_le_bytes());
     frame
+}
+
+/// Build a REBOOT command (with QCicada magic prefix).
+pub fn build_reboot() -> Vec<u8> {
+    let mut frame = vec![CMD_REBOOT];
+    frame.extend_from_slice(&CUSTOM_MAGIC);
+    frame
+}
+
+/// Build the certificate data blob that gets signed/verified.
+///
+/// Format: `u16(0) || u8(hw_major) || u8(hw_minor) || u32_le(serial_int) || pub_key[64]`
+pub fn build_certificate_data(
+    hw_major: u8,
+    hw_minor: u8,
+    serial_int: u32,
+    pub_key: &[u8],
+) -> Vec<u8> {
+    let mut data = Vec::with_capacity(8 + PUB_KEY_LEN);
+    data.extend_from_slice(&0u16.to_le_bytes()); // reserved
+    data.push(hw_major);
+    data.push(hw_minor);
+    data.extend_from_slice(&serial_int.to_le_bytes());
+    data.extend_from_slice(pub_key);
+    data
+}
+
+/// Parse a hardware info string like "CICADA-QRNG-1.1" into (major, minor).
+pub fn parse_hw_version(hw_info: &str) -> Option<(u8, u8)> {
+    let version_str = hw_info.strip_prefix("CICADA-QRNG-")?;
+    let mut parts = version_str.split('.');
+    let major: u8 = parts.next()?.parse().ok()?;
+    let minor: u8 = parts.next()?.parse().ok()?;
+    Some((major, minor))
+}
+
+/// Parse a serial string like "QC0000000217" into the integer 217.
+pub fn parse_serial_int(serial: &str) -> Option<u32> {
+    serial.strip_prefix("QC")?.parse().ok()
 }
 
 /// Parse a 5-byte ACK/status payload.

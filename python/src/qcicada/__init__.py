@@ -1,5 +1,6 @@
 """qcicada — Python SDK for the QCicada QRNG (Crypta Labs)."""
 
+from .crypto import verify_certificate, verify_signature
 from .device import QCicada, QCicadaError
 from .discovery import DiscoveredDevice, discover_devices, open_by_serial, probe_device
 from .serial import find_devices
@@ -20,6 +21,8 @@ __all__ = [
     'find_devices',
     'open_by_serial',
     'probe_device',
+    'verify_certificate',
+    'verify_signature',
     'DeviceConfig',
     'DeviceInfo',
     'DeviceStatistics',

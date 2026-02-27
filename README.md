@@ -171,6 +171,77 @@ result.signature  // 64-byte signature
 </td></tr>
 </table>
 
+## Certificate Verification
+
+Verify the device's identity using its ECDSA P-256 certificate chain. The device holds an internal keypair; a Certificate Authority (CA) signs the device's public key along with its hardware version and serial number.
+
+<table>
+<tr><th>Python</th><th>Rust</th></tr>
+<tr><td>
+
+```python
+# CA public key (64 bytes, from Crypta Labs)
+ca_pub_key = bytes.fromhex("...")
+
+# Verify device and get its public key
+dev_pub = qrng.get_verified_pub_key(ca_pub_key)
+
+# Signed read with signature verification
+result = qrng.signed_read_verified(32, dev_pub)
+result.data       # 32 verified random bytes
+result.signature  # 64-byte signature
+```
+
+</td><td>
+
+```rust
+// CA public key (64 bytes, from Crypta Labs)
+let ca_pub_key = hex::decode("...").unwrap();
+
+// Verify device and get its public key
+let dev_pub = qrng.get_verified_pub_key(&ca_pub_key)?;
+
+// Signed read with signature verification
+let result = qrng.signed_read_verified(32, &dev_pub)?;
+result.data       // 32 verified random bytes
+result.signature  // 64-byte signature
+```
+
+</td></tr>
+</table>
+
+You can also access the raw primitives directly:
+
+<table>
+<tr><th>Python</th><th>Rust</th></tr>
+<tr><td>
+
+```python
+pub_key = qrng.get_dev_pub_key()      # 64 bytes
+cert = qrng.get_dev_certificate()     # 64 bytes
+
+from qcicada import verify_certificate
+valid = verify_certificate(
+    ca_pub_key, pub_key, cert,
+    hw_major=1, hw_minor=1, serial_int=217,
+)
+```
+
+</td><td>
+
+```rust
+let pub_key = qrng.get_dev_pub_key()?;   // 64 bytes
+let cert = qrng.get_dev_certificate()?;  // 64 bytes
+
+use qcicada::crypto::verify_certificate;
+let valid = verify_certificate(
+    &ca_pub_key, &pub_key, &cert, 1, 1, 217,
+)?;
+```
+
+</td></tr>
+</table>
+
 ## Continuous Mode
 
 High-throughput streaming with no per-request overhead:
@@ -290,6 +361,7 @@ qrng.set_config(&config)?;
 |--------|-------------|
 | `random(n)` | Get `n` random bytes (1–65535, one-shot) |
 | `signed_read(n)` | Get `n` random bytes + 64-byte signature (FW 5.13+) |
+| `signed_read_verified(n, pub_key)` | Signed read + ECDSA signature verification |
 | `start_continuous()` | Start continuous streaming mode |
 | `read_continuous(n)` | Read `n` bytes from continuous stream |
 | `fill_bytes(buf)` | Fill a buffer of any size (auto-chunks) |
@@ -299,6 +371,10 @@ qrng.set_config(&config)?;
 | `set_config(config)` | Write device configuration |
 | `set_postprocess(mode)` | Shortcut to change entropy mode |
 | `get_statistics()` | Bytes generated, speed, failure counts |
+| `get_dev_pub_key()` | Device's ECDSA P-256 public key (64 bytes) |
+| `get_dev_certificate()` | CA-signed device certificate (64 bytes) |
+| `get_verified_pub_key(ca_key)` | Verify certificate chain, return device public key |
+| `reboot()` | Reboot the device (reconnect required) |
 | `reset()` | Restart generation and clear statistics |
 | `stop()` | Halt any active generation |
 | `close()` | Close serial port |
@@ -313,6 +389,7 @@ qcicada/
 │   ├── lib.rs
 │   ├── device.rs     # QCicada high-level API
 │   ├── protocol.rs   # Wire protocol (pure, no I/O)
+│   ├── crypto.rs     # ECDSA P-256 certificate verification
 │   ├── serial.rs     # Serial transport + macOS fixes
 │   ├── discovery.rs  # Device discovery
 │   └── types.rs      # Shared data types

@@ -12,7 +12,7 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Topic :: Security :: Cryptography",
 ]
-dependencies = ["pyserial>=3.5"]
+dependencies = ["pyserial>=3.5", "cryptography>=41"]
 
 [project.urls]
 Homepage = "https://github.com/amenti-labs/qcicada"

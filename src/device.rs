@@ -174,6 +174,130 @@ impl QCicada {
         Ok(data)
     }
 
+    /// Retrieve the device's ECDSA P-256 public key (64 bytes: x || y).
+    ///
+    /// Requires QCicada firmware with certificate support.
+    pub fn get_dev_pub_key(&mut self) -> Result<Vec<u8>, QCicadaError> {
+        let data = self
+            .command(CMD_GET_DEV_PUB_KEY, None)?
+            .ok_or(QCicadaError::Protocol("NACK on GET_DEV_PUB_KEY".into()))?;
+        if data.len() != PUB_KEY_LEN {
+            return Err(QCicadaError::Protocol(format!(
+                "Expected {} byte public key, got {}",
+                PUB_KEY_LEN,
+                data.len()
+            )));
+        }
+        Ok(data)
+    }
+
+    /// Retrieve the device certificate (64 bytes: ECDSA r || s).
+    ///
+    /// This is the CA's signature over the device's identity (hw version,
+    /// serial number, and public key).
+    pub fn get_dev_certificate(&mut self) -> Result<Vec<u8>, QCicadaError> {
+        let data = self
+            .command(CMD_GET_DEV_CERTIFICATE, None)?
+            .ok_or(QCicadaError::Protocol("NACK on GET_DEV_CERTIFICATE".into()))?;
+        if data.len() != CERTIFICATE_LEN {
+            return Err(QCicadaError::Protocol(format!(
+                "Expected {} byte certificate, got {}",
+                CERTIFICATE_LEN,
+                data.len()
+            )));
+        }
+        Ok(data)
+    }
+
+    /// Retrieve and verify the device's public key against a CA public key.
+    ///
+    /// Fetches the device's info, public key, and certificate, then verifies
+    /// the certificate chain. Returns the verified public key on success.
+    ///
+    /// # Arguments
+    /// - `ca_pub_key`: 64 bytes (x || y) of the Certificate Authority's public key.
+    pub fn get_verified_pub_key(
+        &mut self,
+        ca_pub_key: &[u8],
+    ) -> Result<Vec<u8>, QCicadaError> {
+        let info = self.get_info()?;
+        let dev_pub_key = self.get_dev_pub_key()?;
+        let certificate = self.get_dev_certificate()?;
+
+        let (hw_major, hw_minor) = crate::protocol::parse_hw_version(&info.hw_info)
+            .ok_or_else(|| {
+                QCicadaError::Protocol(format!(
+                    "Cannot parse hardware version from '{}'",
+                    info.hw_info
+                ))
+            })?;
+        let serial_int = crate::protocol::parse_serial_int(&info.serial).ok_or_else(|| {
+            QCicadaError::Protocol(format!(
+                "Cannot parse serial number from '{}'",
+                info.serial
+            ))
+        })?;
+
+        let valid = crate::crypto::verify_certificate(
+            ca_pub_key,
+            &dev_pub_key,
+            &certificate,
+            hw_major,
+            hw_minor,
+            serial_int,
+        )
+        .map_err(|e| QCicadaError::Protocol(format!("Certificate verification error: {e}")))?;
+
+        if !valid {
+            return Err(QCicadaError::Protocol(
+                "Device certificate verification failed".into(),
+            ));
+        }
+        Ok(dev_pub_key)
+    }
+
+    /// Perform a signed read and verify the signature against a known device public key.
+    ///
+    /// Returns the verified [`SignedRead`] on success. Fails if verification fails.
+    ///
+    /// # Arguments
+    /// - `n`: Number of random bytes to read.
+    /// - `device_pub_key`: 64 bytes (x || y) of the device's verified public key.
+    pub fn signed_read_verified(
+        &mut self,
+        n: u16,
+        device_pub_key: &[u8],
+    ) -> Result<SignedRead, QCicadaError> {
+        let result = self.signed_read(n)?;
+
+        let valid = crate::crypto::verify_signature(device_pub_key, &result.data, &result.signature)
+            .map_err(|e| {
+                QCicadaError::Protocol(format!("Signature verification error: {e}"))
+            })?;
+
+        if !valid {
+            return Err(QCicadaError::Protocol(
+                "Signed read signature verification failed".into(),
+            ));
+        }
+        Ok(result)
+    }
+
+    /// Reboot the device.
+    ///
+    /// Sends the QCicada-specific reboot command. The device will disconnect
+    /// and reconnect — you must re-open the connection after calling this.
+    pub fn reboot(&mut self) -> Result<(), QCicadaError> {
+        let frame = build_reboot();
+        // Send the full frame (command + magic) directly
+        self.transport.flush()?;
+        self.transport.write(&frame)?;
+        // Read optional response — device may disconnect immediately
+        self.transport.set_timeout(Duration::from_millis(500))?;
+        let _ = self.transport.read(1);
+        Ok(())
+    }
+
     /// Change post-processing mode, preserving other config settings.
     pub fn set_postprocess(&mut self, mode: PostProcess) -> Result<(), QCicadaError> {
         let mut config = self.get_config()?;

@@ -7,12 +7,18 @@ from dataclasses import replace
 
 from .protocol import (
     CMD_GET_CONFIG, CMD_GET_INFO, CMD_GET_STATISTICS, CMD_GET_STATUS,
+    CMD_GET_DEV_PUB_KEY, CMD_GET_DEV_CERTIFICATE, CMD_REBOOT,
     CMD_RESET, CMD_SET_CONFIG, CMD_SIGNED_READ, CMD_START, CMD_STOP,
     RESP_ACK, RESP_NACK, SUCCESS_RESPONSE, PAYLOAD_SIZE,
-    MAX_BLOCK_SIZE, SIGNATURE_LEN,
+    MAX_BLOCK_SIZE, SIGNATURE_LEN, PUB_KEY_LEN, CERTIFICATE_LEN,
     build_cmd, build_start_one_shot, build_start_continuous,
-    build_signed_read, serialize_config,
+    build_signed_read, build_reboot, serialize_config,
     parse_config, parse_info, parse_statistics, parse_status,
+)
+from .crypto import (
+    verify_certificate as _verify_certificate,
+    verify_signature as _verify_signature,
+    parse_hw_version, parse_serial_int,
 )
 from .serial import SerialTransport, find_devices
 from .types import (
@@ -191,6 +197,110 @@ class QCicada:
         if len(data) != n:
             raise QCicadaError(f'Expected {n} continuous bytes, got {len(data)}')
         return data
+
+    def get_dev_pub_key(self) -> bytes:
+        """Retrieve the device's ECDSA P-256 public key (64 bytes: x || y).
+
+        Requires QCicada firmware with certificate support.
+        """
+        data = self._command(CMD_GET_DEV_PUB_KEY)
+        if data is None:
+            raise QCicadaError('Failed to get device public key (NACK)')
+        if len(data) != PUB_KEY_LEN:
+            raise QCicadaError(
+                f'Expected {PUB_KEY_LEN} byte public key, got {len(data)}'
+            )
+        return data
+
+    def get_dev_certificate(self) -> bytes:
+        """Retrieve the device certificate (64 bytes: ECDSA r || s).
+
+        This is the CA's signature over the device's identity (hw version,
+        serial number, and public key).
+        """
+        data = self._command(CMD_GET_DEV_CERTIFICATE)
+        if data is None:
+            raise QCicadaError('Failed to get device certificate (NACK)')
+        if len(data) != CERTIFICATE_LEN:
+            raise QCicadaError(
+                f'Expected {CERTIFICATE_LEN} byte certificate, got {len(data)}'
+            )
+        return data
+
+    def get_verified_pub_key(self, ca_pub_key: bytes) -> bytes:
+        """Retrieve and verify the device's public key against a CA public key.
+
+        Fetches the device's info, public key, and certificate, then verifies
+        the certificate chain. Returns the verified public key on success.
+
+        Args:
+            ca_pub_key: 64 bytes (x || y) of the Certificate Authority's public key.
+
+        Raises:
+            QCicadaError: If verification fails or device communication fails.
+        """
+        info = self.get_info()
+        dev_pub_key = self.get_dev_pub_key()
+        certificate = self.get_dev_certificate()
+
+        hw_ver = parse_hw_version(info.hw_info)
+        if hw_ver is None:
+            raise QCicadaError(
+                f"Cannot parse hardware version from '{info.hw_info}'"
+            )
+        hw_major, hw_minor = hw_ver
+
+        serial_int = parse_serial_int(info.serial)
+        if serial_int is None:
+            raise QCicadaError(
+                f"Cannot parse serial number from '{info.serial}'"
+            )
+
+        valid = _verify_certificate(
+            ca_pub_key, dev_pub_key, certificate,
+            hw_major, hw_minor, serial_int,
+        )
+        if not valid:
+            raise QCicadaError('Device certificate verification failed')
+        return dev_pub_key
+
+    def signed_read_verified(self, n: int, device_pub_key: bytes) -> SignedRead:
+        """Perform a signed read and verify the signature.
+
+        Args:
+            n: Number of random bytes to read (1-65535).
+            device_pub_key: 64 bytes (x || y) of the device's verified public key.
+
+        Returns:
+            Verified :class:`SignedRead` with data and signature.
+
+        Raises:
+            QCicadaError: If verification fails.
+        """
+        result = self.signed_read(n)
+        valid = _verify_signature(device_pub_key, result.data, result.signature)
+        if not valid:
+            raise QCicadaError('Signed read signature verification failed')
+        return result
+
+    def reboot(self) -> None:
+        """Reboot the device.
+
+        The device will disconnect and reconnect — you must re-open the
+        connection after calling this.
+        """
+        frame = build_reboot()
+        self._transport.flush()
+        try:
+            self._transport.write(frame)
+        except IOError:
+            pass  # Device may disconnect immediately
+        # Try to read optional response
+        try:
+            self._transport.set_timeout(0.5)
+            self._transport.read(1)
+        except Exception:
+            pass
 
     def fill_bytes(self, buf: bytearray) -> None:
         """Fill a buffer with random bytes, chunking as needed.
