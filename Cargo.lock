@@ -328,7 +328,7 @@ dependencies = [
 
 [[package]]
 name = "qcicada"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "hex",
  "log",

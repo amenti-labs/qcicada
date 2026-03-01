@@ -84,7 +84,9 @@ impl QCicada {
 
     /// Get `n` random bytes using one-shot mode.
     ///
-    /// Maximum 65535 bytes per call (protocol limit).
+    /// Maximum 65535 bytes per call (protocol limit). The response is read
+    /// in chunks to match the official QCC C library's `_read_random()`
+    /// behaviour, preventing USB serial timeout on large requests.
     pub fn random(&mut self, n: u16) -> Result<Vec<u8>, QCicadaError> {
         if n == 0 {
             return Ok(Vec::new());
@@ -94,11 +96,7 @@ impl QCicada {
         self.command(CMD_START, Some(&frame[1..]))?
             .ok_or(QCicadaError::Protocol("NACK on START one-shot".into()))?;
 
-        // Read the random data
-        let timeout_ms = 500 + (n as u64) / 10;
-        self.transport
-            .set_timeout(Duration::from_millis(timeout_ms))?;
-        let data = self.transport.read(n as usize)?;
+        let data = self.read_chunked(n as usize)?;
         if data.len() != n as usize {
             return Err(QCicadaError::Protocol(format!(
                 "Expected {} random bytes, got {}",
@@ -125,10 +123,7 @@ impl QCicada {
 
         // Read random data + 64-byte signature
         let total = n as usize + SIGNATURE_LEN;
-        let timeout_ms = 500 + (n as u64) / 10;
-        self.transport
-            .set_timeout(Duration::from_millis(timeout_ms))?;
-        let buf = self.transport.read(total)?;
+        let buf = self.read_chunked(total)?;
         if buf.len() != total {
             return Err(QCicadaError::Protocol(format!(
                 "Expected {} bytes (data+sig), got {}",
@@ -156,14 +151,13 @@ impl QCicada {
     /// Read bytes from an active continuous mode stream.
     ///
     /// Call [`start_continuous`] first. Returns exactly `n` bytes or an error.
+    /// Reads in chunks to match the official QCC C library's
+    /// `qcc_read_continuous()` → `_read_random()` pattern.
     pub fn read_continuous(&mut self, n: usize) -> Result<Vec<u8>, QCicadaError> {
         if n == 0 {
             return Ok(Vec::new());
         }
-        let timeout_ms = 500 + (n as u64) / 10;
-        self.transport
-            .set_timeout(Duration::from_millis(timeout_ms))?;
-        let data = self.transport.read(n)?;
+        let data = self.read_chunked(n)?;
         if data.len() != n {
             return Err(QCicadaError::Protocol(format!(
                 "Expected {} continuous bytes, got {}",
@@ -318,11 +312,21 @@ impl QCicada {
         Ok(())
     }
 
-    /// Fill a buffer with random bytes, chunking as needed for the protocol limit.
+    /// Fill a buffer with random bytes, chunking into manageable one-shot reads.
+    ///
+    /// The QCicada generates entropy over USB serial at ~12.5 KB/s. Large
+    /// single requests can exceed the per-call timeout. This method chunks
+    /// reads to stay within reliable limits, matching the approach used by
+    /// the official QCC C library (`DEFAULT_READ_SIZE = 1760`). We use a
+    /// slightly larger chunk (8192 bytes) since each `random()` call carries
+    /// protocol overhead (command frame + ACK), so fewer calls = better
+    /// throughput. 8192 bytes fits comfortably in the adaptive timeout
+    /// (`500 + 8192/10 ≈ 1.3s`) at the device's throughput (~655ms actual).
     pub fn fill_bytes(&mut self, buf: &mut [u8]) -> Result<(), QCicadaError> {
+        const CHUNK: usize = 8192;
         let mut offset = 0;
         while offset < buf.len() {
-            let chunk = (buf.len() - offset).min(u16::MAX as usize) as u16;
+            let chunk = (buf.len() - offset).min(CHUNK) as u16;
             let data = self.random(chunk)?;
             buf[offset..offset + data.len()].copy_from_slice(&data);
             offset += data.len();
@@ -333,6 +337,33 @@ impl QCicada {
     /// Close the serial connection.
     pub fn close(self) {
         drop(self);
+    }
+
+    // --- Internal helpers ---
+
+    /// Read `len` bytes from the transport in chunks, matching the approach
+    /// used by the official QCC C library's `_read_random()`. Each chunk gets
+    /// its own adaptive timeout so that serial driver buffering or USB latency
+    /// cannot cause a single large read to timeout.
+    fn read_chunked(&mut self, len: usize) -> Result<Vec<u8>, QCicadaError> {
+        const CHUNK: usize = 8192;
+        let mut result = Vec::with_capacity(len);
+        let mut remaining = len;
+
+        while remaining > 0 {
+            let to_read = remaining.min(CHUNK);
+            let timeout_ms = 500 + (to_read as u64) / 10;
+            self.transport
+                .set_timeout(Duration::from_millis(timeout_ms))?;
+            let data = self.transport.read(to_read)?;
+            if data.is_empty() {
+                break;
+            }
+            remaining -= data.len();
+            result.extend_from_slice(&data);
+        }
+
+        Ok(result)
     }
 
     // --- Internal protocol handling ---
@@ -418,7 +449,8 @@ impl io::Read for QCicada {
         if buf.is_empty() {
             return Ok(0);
         }
-        let n = buf.len().min(u16::MAX as usize) as u16;
+        // Cap per-call size to avoid USB serial timeouts on large buffers.
+        let n = buf.len().min(8192) as u16;
         let data = self
             .random(n)
             .map_err(io::Error::other)?;

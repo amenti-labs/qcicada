@@ -1,6 +1,6 @@
 [package]
 name = "qcicada"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 description = "SDK for the QCicada QRNG (Crypta Labs) — macOS-first, works on Linux too"
 license = "MIT"
