@@ -52,9 +52,9 @@ with QCicada() as qrng:
     print(f"Signature:   {signed.signature.hex()}")
 
     # Continuous mode
-    qrng.start_continuous()
+    drained = qrng.start_continuous_fresh()
     chunk = qrng.read_continuous(64)
-    print(f"\nContinuous:  {chunk.hex()}")
+    print(f"\nContinuous (drained {drained} buffered bytes): {chunk.hex()}")
     qrng.stop()
 
     # Statistics

@@ -43,7 +43,6 @@ impl SerialTransport {
     /// Open a serial connection to the given port.
     pub fn open(port_name: &str, timeout: Duration) -> Result<Self, QCicadaError> {
         let is_macos = cfg!(target_os = "macos");
-
         let mut port = serialport::new(port_name, 1_000_000)
             .timeout(timeout)
             .open()
@@ -116,6 +115,19 @@ impl SerialTransport {
             .clear(serialport::ClearBuffer::Input)
             .map_err(|e| QCicadaError::Serial(format!("Clear buffer failed: {e}")))?;
         Ok(())
+    }
+
+    /// Discard any bytes currently queued in the input buffer.
+    pub fn drain_input(&mut self) -> Result<usize, QCicadaError> {
+        let drained = self
+            .port
+            .bytes_to_read()
+            .map_err(|e| QCicadaError::Serial(format!("Query input buffer failed: {e}")))?
+            as usize;
+        self.port
+            .clear(serialport::ClearBuffer::Input)
+            .map_err(|e| QCicadaError::Serial(format!("Clear buffer failed: {e}")))?;
+        Ok(drained)
     }
 
     /// Set read timeout, enforcing macOS minimum.

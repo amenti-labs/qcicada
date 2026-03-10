@@ -253,7 +253,9 @@ pub fn serialize_config(config: &DeviceConfig) -> Vec<u8> {
 /// Parse a 30-byte STATISTICS response payload.
 pub fn parse_statistics(data: &[u8]) -> Result<DeviceStatistics, QCicadaError> {
     if data.len() < PAYLOAD_STATISTICS {
-        return Err(QCicadaError::Protocol("Statistics payload too short".into()));
+        return Err(QCicadaError::Protocol(
+            "Statistics payload too short".into(),
+        ));
     }
     let generated_bytes = u64::from_le_bytes(data[0..8].try_into().unwrap());
     let rep_failures = u32::from_le_bytes(data[8..12].try_into().unwrap());
@@ -302,10 +304,10 @@ mod tests {
     #[test]
     fn build_start_one_shot_format() {
         let frame = build_start_one_shot(32);
-        assert_eq!(frame[0], CMD_START);        // command byte
-        assert_eq!(frame[1], START_ONE_SHOT);   // mode = one-shot
-        assert_eq!(frame[2], 32);               // length low byte
-        assert_eq!(frame[3], 0);                // length high byte
+        assert_eq!(frame[0], CMD_START); // command byte
+        assert_eq!(frame[1], START_ONE_SHOT); // mode = one-shot
+        assert_eq!(frame[2], 32); // length low byte
+        assert_eq!(frame[3], 0); // length high byte
         assert_eq!(frame.len(), 4);
     }
 
@@ -435,7 +437,15 @@ mod tests {
 
     // -- Config parse/serialize roundtrip tests --
 
-    fn make_config_payload(pp: u8, level: f32, flags: u8, n_lsb: u8, hash_in: u8, blk: u16, ac: u16) -> Vec<u8> {
+    fn make_config_payload(
+        pp: u8,
+        level: f32,
+        flags: u8,
+        n_lsb: u8,
+        hash_in: u8,
+        blk: u16,
+        ac: u16,
+    ) -> Vec<u8> {
         let mut data = vec![pp];
         data.extend_from_slice(&level.to_le_bytes());
         data.push(flags);
@@ -514,7 +524,10 @@ mod tests {
         assert_eq!(parsed.n_lsbits, original.n_lsbits);
         assert_eq!(parsed.hash_input_size, original.hash_input_size);
         assert_eq!(parsed.block_size, original.block_size);
-        assert_eq!(parsed.autocalibration_target, original.autocalibration_target);
+        assert_eq!(
+            parsed.autocalibration_target,
+            original.autocalibration_target
+        );
     }
 
     #[test]
@@ -559,7 +572,15 @@ mod tests {
 
     // -- Statistics parsing tests --
 
-    fn make_stats_payload(gen: u64, rep: u32, adp: u32, bit: u32, spd: u32, sens: u16, led: f32) -> Vec<u8> {
+    fn make_stats_payload(
+        gen: u64,
+        rep: u32,
+        adp: u32,
+        bit: u32,
+        spd: u32,
+        sens: u16,
+        led: f32,
+    ) -> Vec<u8> {
         let mut data = Vec::new();
         data.extend_from_slice(&gen.to_le_bytes());
         data.extend_from_slice(&rep.to_le_bytes());

@@ -28,7 +28,10 @@ fn get_info() {
     assert!(!info.hw_info.is_empty(), "hw_info should not be empty");
     assert!(info.fw_version > 0, "fw_version should be nonzero");
     assert!(info.core_version > 0, "core_version should be nonzero");
-    println!("Serial: {}, FW: {:#x}, HW: {}", info.serial, info.fw_version, info.hw_info);
+    println!(
+        "Serial: {}, FW: {:#x}, HW: {}",
+        info.serial, info.fw_version, info.hw_info
+    );
 }
 
 #[test]
@@ -37,7 +40,10 @@ fn get_status() {
     let mut qrng = open_device();
     let status = qrng.get_status().expect("get_status failed");
     assert!(status.initialized, "device should be initialized");
-    assert!(!status.startup_test_in_progress, "startup test should be done");
+    assert!(
+        !status.startup_test_in_progress,
+        "startup test should be done"
+    );
     assert!(!status.voltage_low, "voltage should not be low");
     assert!(!status.voltage_high, "voltage should not be high");
     assert!(status.ready_bytes > 0, "should have bytes ready");
@@ -49,7 +55,10 @@ fn get_status() {
 fn get_config() {
     let mut qrng = open_device();
     let config = qrng.get_config().expect("get_config failed");
-    println!("Postprocess: {:?}, block_size: {}", config.postprocess, config.block_size);
+    println!(
+        "Postprocess: {:?}, block_size: {}",
+        config.postprocess, config.block_size
+    );
     assert!(config.block_size > 0, "block_size should be nonzero");
 }
 
@@ -59,14 +68,18 @@ fn get_statistics() {
     let mut qrng = open_device();
     let stats = qrng.get_statistics().expect("get_statistics failed");
     assert!(stats.speed > 0, "speed should be nonzero");
-    println!("Speed: {} bits/s, generated: {} bytes", stats.speed, stats.generated_bytes);
+    println!(
+        "Speed: {} bits/s, generated: {} bytes",
+        stats.speed, stats.generated_bytes
+    );
 }
 
 #[test]
 #[ignore]
 fn random_sha256_32_bytes() {
     let mut qrng = open_device();
-    qrng.set_postprocess(PostProcess::Sha256).expect("set SHA256 failed");
+    qrng.set_postprocess(PostProcess::Sha256)
+        .expect("set SHA256 failed");
     let data = qrng.random(32).expect("random failed");
     assert_eq!(data.len(), 32);
     assert!(data.iter().any(|&b| b != 0), "data should not be all zeros");
@@ -76,7 +89,8 @@ fn random_sha256_32_bytes() {
 #[ignore]
 fn random_sha256_different_each_time() {
     let mut qrng = open_device();
-    qrng.set_postprocess(PostProcess::Sha256).expect("set SHA256 failed");
+    qrng.set_postprocess(PostProcess::Sha256)
+        .expect("set SHA256 failed");
     let a = qrng.random(32).expect("random 1 failed");
     let b = qrng.random(32).expect("random 2 failed");
     assert_ne!(a, b, "two reads should produce different data");
@@ -86,21 +100,25 @@ fn random_sha256_different_each_time() {
 #[ignore]
 fn random_raw_noise() {
     let mut qrng = open_device();
-    qrng.set_postprocess(PostProcess::RawNoise).expect("set RawNoise failed");
+    qrng.set_postprocess(PostProcess::RawNoise)
+        .expect("set RawNoise failed");
     let data = qrng.random(32).expect("random failed");
     assert_eq!(data.len(), 32);
     assert!(data.iter().any(|&b| b != 0));
-    qrng.set_postprocess(PostProcess::Sha256).expect("restore SHA256 failed");
+    qrng.set_postprocess(PostProcess::Sha256)
+        .expect("restore SHA256 failed");
 }
 
 #[test]
 #[ignore]
 fn random_raw_samples() {
     let mut qrng = open_device();
-    qrng.set_postprocess(PostProcess::RawSamples).expect("set RawSamples failed");
+    qrng.set_postprocess(PostProcess::RawSamples)
+        .expect("set RawSamples failed");
     let data = qrng.random(32).expect("random failed");
     assert_eq!(data.len(), 32);
-    qrng.set_postprocess(PostProcess::Sha256).expect("restore SHA256 failed");
+    qrng.set_postprocess(PostProcess::Sha256)
+        .expect("restore SHA256 failed");
 }
 
 #[test]
@@ -108,7 +126,9 @@ fn random_raw_samples() {
 fn random_various_sizes() {
     let mut qrng = open_device();
     for &size in &[1, 16, 32, 64, 128, 256, 512, 1024] {
-        let data = qrng.random(size).expect(&format!("random({size}) failed"));
+        let data = qrng
+            .random(size)
+            .unwrap_or_else(|_| panic!("random({size}) failed"));
         assert_eq!(data.len(), size as usize, "wrong length for size {size}");
     }
 }
@@ -127,7 +147,10 @@ fn fill_bytes_large() {
     let mut qrng = open_device();
     let mut buf = vec![0u8; 256];
     qrng.fill_bytes(&mut buf).expect("fill_bytes failed");
-    assert!(buf.iter().any(|&b| b != 0), "buffer should not be all zeros");
+    assert!(
+        buf.iter().any(|&b| b != 0),
+        "buffer should not be all zeros"
+    );
 }
 
 #[test]
@@ -164,7 +187,8 @@ fn set_postprocess_convenience() {
     let mut qrng = open_device();
     let original = qrng.get_config().expect("get_config failed");
 
-    qrng.set_postprocess(PostProcess::RawNoise).expect("set RawNoise");
+    qrng.set_postprocess(PostProcess::RawNoise)
+        .expect("set RawNoise");
     let cfg = qrng.get_config().expect("readback");
     assert_eq!(cfg.postprocess, PostProcess::RawNoise);
     assert_eq!(cfg.block_size, original.block_size);
@@ -203,12 +227,19 @@ fn probe_device_on_bogus_port() {
 #[ignore]
 fn signed_read_32_bytes() {
     let mut qrng = open_device();
-    qrng.set_postprocess(PostProcess::Sha256).expect("set SHA256 failed");
+    qrng.set_postprocess(PostProcess::Sha256)
+        .expect("set SHA256 failed");
     let result = qrng.signed_read(32).expect("signed_read failed");
     assert_eq!(result.data.len(), 32);
     assert_eq!(result.signature.len(), 64);
-    assert!(result.data.iter().any(|&b| b != 0), "data should not be all zeros");
-    assert!(result.signature.iter().any(|&b| b != 0), "signature should not be all zeros");
+    assert!(
+        result.data.iter().any(|&b| b != 0),
+        "data should not be all zeros"
+    );
+    assert!(
+        result.signature.iter().any(|&b| b != 0),
+        "signature should not be all zeros"
+    );
 }
 
 #[test]
@@ -217,7 +248,10 @@ fn signed_read_different_each_time() {
     let mut qrng = open_device();
     let a = qrng.signed_read(32).expect("signed_read 1 failed");
     let b = qrng.signed_read(32).expect("signed_read 2 failed");
-    assert_ne!(a.data, b.data, "two signed reads should produce different data");
+    assert_ne!(
+        a.data, b.data,
+        "two signed reads should produce different data"
+    );
     assert_ne!(a.signature, b.signature, "signatures should differ");
 }
 
@@ -228,9 +262,14 @@ fn continuous_mode_read() {
     qrng.start_continuous().expect("start_continuous failed");
     let data = qrng.read_continuous(64).expect("read_continuous failed");
     assert_eq!(data.len(), 64);
-    assert!(data.iter().any(|&b| b != 0), "continuous data should not be all zeros");
+    assert!(
+        data.iter().any(|&b| b != 0),
+        "continuous data should not be all zeros"
+    );
     qrng.stop().expect("stop after continuous failed");
-    let _ = qrng.get_status().expect("get_status after continuous stop failed");
+    let _ = qrng
+        .get_status()
+        .expect("get_status after continuous stop failed");
 }
 
 #[test]
@@ -246,11 +285,43 @@ fn continuous_mode_multiple_reads() {
 
 #[test]
 #[ignore]
+fn continuous_mode_fresh_read() {
+    let mut qrng = open_device();
+    let drained = qrng
+        .start_continuous_fresh()
+        .expect("start_continuous_fresh failed");
+    let data = qrng.read_continuous(64).expect("fresh read failed");
+    assert_eq!(data.len(), 64);
+    assert!(
+        data.iter().any(|&b| b != 0),
+        "fresh data should not be all zeros"
+    );
+    println!("Drained {drained} buffered bytes before fresh read");
+    qrng.stop().expect("stop after fresh continuous failed");
+}
+
+#[test]
+#[ignore]
+fn drain_input_is_safe() {
+    let mut qrng = open_device();
+    qrng.start_continuous().expect("start_continuous failed");
+    let drained = qrng.drain_input().expect("drain_input failed");
+    let data = qrng.read_continuous(32).expect("read after drain failed");
+    assert_eq!(data.len(), 32);
+    println!("Drained {drained} buffered bytes");
+    qrng.stop().expect("stop failed");
+}
+
+#[test]
+#[ignore]
 fn get_dev_pub_key() {
     let mut qrng = open_device();
     let pub_key = qrng.get_dev_pub_key().expect("get_dev_pub_key failed");
     assert_eq!(pub_key.len(), 64, "public key should be 64 bytes");
-    assert!(pub_key.iter().any(|&b| b != 0), "public key should not be all zeros");
+    assert!(
+        pub_key.iter().any(|&b| b != 0),
+        "public key should not be all zeros"
+    );
     println!("Device pub key: {}", hex::encode(&pub_key));
 }
 
@@ -258,7 +329,9 @@ fn get_dev_pub_key() {
 #[ignore]
 fn get_dev_certificate() {
     let mut qrng = open_device();
-    let cert = qrng.get_dev_certificate().expect("get_dev_certificate failed");
+    let cert = qrng
+        .get_dev_certificate()
+        .expect("get_dev_certificate failed");
     assert_eq!(cert.len(), 64, "certificate should be 64 bytes");
     println!("Device certificate: {}", hex::encode(&cert));
 }

@@ -161,6 +161,24 @@ class TestContinuousMode:
         assert data == b''
         qrng.stop()
 
+    def test_continuous_fresh_read(self, qrng):
+        drained = qrng.start_continuous_fresh()
+        data = qrng.read_continuous(64)
+        assert isinstance(drained, int)
+        assert drained >= 0
+        assert len(data) == 64
+        assert any(b != 0 for b in data)
+        qrng.stop()
+
+    def test_drain_input_is_safe(self, qrng):
+        qrng.start_continuous()
+        drained = qrng.drain_input()
+        data = qrng.read_continuous(32)
+        assert isinstance(drained, int)
+        assert drained >= 0
+        assert len(data) == 32
+        qrng.stop()
+
 
 class TestStop:
     def test_stop_is_safe(self, qrng):
