@@ -63,11 +63,7 @@ pub fn verify_certificate(
 /// - `pub_key`: 64 bytes (x || y) of the signer's uncompressed P-256 public key.
 /// - `message`: The signed data.
 /// - `signature`: 64 bytes (r || s) in big-endian.
-pub fn verify_signature(
-    pub_key: &[u8],
-    message: &[u8],
-    signature: &[u8],
-) -> Result<bool, String> {
+pub fn verify_signature(pub_key: &[u8], message: &[u8], signature: &[u8]) -> Result<bool, String> {
     if pub_key.len() != PUB_KEY_LEN {
         return Err(format!(
             "Public key must be {} bytes, got {}",
@@ -87,18 +83,14 @@ pub fn verify_signature(
 }
 
 /// Internal: verify ECDSA-SHA256 with raw key/sig bytes.
-fn verify_ecdsa_p256(
-    pub_key_raw: &[u8],
-    message: &[u8],
-    sig_raw: &[u8],
-) -> Result<bool, String> {
+fn verify_ecdsa_p256(pub_key_raw: &[u8], message: &[u8], sig_raw: &[u8]) -> Result<bool, String> {
     // Build uncompressed point: 0x04 || x[32] || y[32]
     let mut uncompressed = vec![0x04];
     uncompressed.extend_from_slice(pub_key_raw);
     let point =
         EncodedPoint::from_bytes(&uncompressed).map_err(|e| format!("Invalid point: {e}"))?;
-    let vk = VerifyingKey::from_encoded_point(&point)
-        .map_err(|e| format!("Invalid public key: {e}"))?;
+    let vk =
+        VerifyingKey::from_encoded_point(&point).map_err(|e| format!("Invalid public key: {e}"))?;
 
     // Parse r || s signature (big-endian, 32 + 32 bytes)
     let sig = Signature::from_slice(sig_raw).map_err(|e| format!("Invalid signature: {e}"))?;
@@ -209,8 +201,7 @@ mod tests {
         let certificate = sig.to_bytes().to_vec();
 
         // Wrong serial number
-        let result =
-            verify_certificate(&ca_pub, &device_pub, &certificate, 1, 1, 999).unwrap();
+        let result = verify_certificate(&ca_pub, &device_pub, &certificate, 1, 1, 999).unwrap();
         assert!(!result);
     }
 

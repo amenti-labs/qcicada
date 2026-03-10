@@ -270,6 +270,31 @@ qrng.stop()?;
 </td></tr>
 </table>
 
+If you care about the first continuous read being as fresh as possible after
+entering continuous mode, use the fresh-start helper. It starts continuous mode
+and drains any already-buffered input bytes once:
+
+<table>
+<tr><th>Python</th><th>Rust</th></tr>
+<tr><td>
+
+```python
+drained = qrng.start_continuous_fresh()
+chunk = qrng.read_continuous(1024)
+qrng.stop()
+```
+
+</td><td>
+
+```rust
+let drained = qrng.start_continuous_fresh()?;
+let chunk = qrng.read_continuous(1024)?;
+qrng.stop()?;
+```
+
+</td></tr>
+</table>
+
 ## Device Info & Status
 
 <table>
@@ -363,6 +388,8 @@ qrng.set_config(&config)?;
 | `signed_read(n)` | Get `n` random bytes + 64-byte signature (FW 5.13+) |
 | `signed_read_verified(n, pub_key)` | Signed read + ECDSA signature verification |
 | `start_continuous()` | Start continuous streaming mode |
+| `start_continuous_fresh()` | Start continuous mode and discard buffered input |
+| `drain_input()` | Discard queued input bytes and return the number drained |
 | `read_continuous(n)` | Read `n` bytes from continuous stream |
 | `fill_bytes(buf)` | Fill a buffer of any size (auto-chunks) |
 | `get_info()` | Serial number, firmware version, hardware |

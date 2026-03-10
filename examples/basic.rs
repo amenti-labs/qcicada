@@ -8,7 +8,10 @@ fn main() -> Result<(), qcicada::QCicadaError> {
         std::process::exit(1);
     }
     for dev in &devices {
-        println!("Found: {} — {} ({})", dev.port, dev.info.serial, dev.info.hw_info);
+        println!(
+            "Found: {} — {} ({})",
+            dev.port, dev.info.serial, dev.info.hw_info
+        );
     }
 
     let mut qrng = QCicada::open(None, None)?;
@@ -55,9 +58,12 @@ fn main() -> Result<(), qcicada::QCicadaError> {
     println!("Signature:   {}", hex::encode(&signed.signature));
 
     // Continuous mode
-    qrng.start_continuous()?;
+    let drained = qrng.start_continuous_fresh()?;
     let chunk = qrng.read_continuous(64)?;
-    println!("\nContinuous:  {}", hex::encode(&chunk));
+    println!(
+        "\nContinuous (drained {drained} buffered bytes): {}",
+        hex::encode(&chunk)
+    );
     qrng.stop()?;
 
     // Statistics

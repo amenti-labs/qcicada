@@ -37,6 +37,7 @@ class SerialTransport:
 
     def __init__(self, port: str, timeout: float = 2.0):
         self._is_macos = sys.platform == 'darwin'
+        timeout = max(timeout, self.MIN_TIMEOUT_MACOS) if self._is_macos else timeout
 
         kwargs: dict = dict(
             baudrate=1_000_000,
@@ -74,6 +75,12 @@ class SerialTransport:
         """Flush output and clear input buffer."""
         self._ser.flush()
         self._ser.reset_input_buffer()
+
+    def drain_input(self) -> int:
+        """Discard any bytes currently queued in the input buffer."""
+        drained = self._ser.in_waiting
+        self._ser.reset_input_buffer()
+        return drained
 
     def set_timeout(self, timeout: float) -> None:
         """Set read timeout, enforcing macOS minimum."""
